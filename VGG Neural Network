@@ -1,0 +1,98 @@
+from keras.models import Sequential, Model 
+from keras.layers import Conv2D, MaxPooling2D 
+from keras.layers import Activation, Dropout, Flatten, Dense, Input
+from keras.preprocessing.image import ImageDataGenerator 
+from keras.preprocessing import image
+from keras.applications.vgg16 import VGG16
+from keras import applications 
+import matplotlib
+matplotlib.use('agg')
+import matplotlib.pyplot as plt
+import h5py
+
+# Bring in the VGG16 network
+img_height, img_width = 150, 150
+model = applications.VGG16(weights='imagenet', input_shape=(img_height, img_width, 3), include_top=False)
+
+x = model.output
+x = Flatten(name='flatten')(x)
+x = Dropout(0.75)(x)
+x = Dense(64, activation='relu')(x)
+x = Dense(10, activation='softmax')(x)
+
+model = Model(model.input, x)
+print('Model loaded.')
+ 
+# Set the first 25 layers (up to the last conv block) to non-trainable (weights will not be updated)
+for layer in model.layers[:19]:
+    print (layer.name)
+    layer.trainable = False
+
+model.compile(loss='categorical_crossentropy',
+              optimizer='rmsprop',
+              metrics=['accuracy'])
+
+batch_size = 16
+
+# This is the augmentation configuration we will use for training
+train_datagen = ImageDataGenerator(
+        rescale=1./255,
+        shear_range=0.2,
+        zoom_range=0.2,
+        horizontal_flip=True)
+
+# This is the augmentation configuration we will use for testing:
+# Only rescaling
+test_datagen = ImageDataGenerator(rescale=1./255)
+
+# This is a generator that will read pictures found in subfolers of 'data/train', 
+# and indefinitely generate batches of augmented image data
+train_generator = train_datagen.flow_from_directory(
+        'FoodDataset/Images/SplitData/TrainingData',  # This is the target directory
+        target_size=(150, 150),  # All images will be resized to 150x150
+        batch_size=batch_size,
+        class_mode='categorical')  # Since we use categorical_crossentropy loss, 
+                                   # we need categorical labels
+
+# This is a similar generator, for validation data
+validation_generator = test_datagen.flow_from_directory(
+        'FoodDataset/Images/SplitData/ValidationData',
+        target_size=(150, 150),
+        batch_size=batch_size,
+        class_mode='categorical')
+		
+# This will train the model, pulling from the train and validation directories 
+history = model.fit_generator(
+                 train_generator,
+                 steps_per_epoch=2000 // batch_size,
+                 epochs=50,
+                 validation_data=validation_generator,
+                 validation_steps=800 // batch_size)
+
+#history_dict = history.history 
+#train_loss_values = history_dict['loss']
+#val_loss_values = history_dict['val_loss']
+
+# Code for ploting results
+#epochs = range(1, len(train_loss_values) + 1) 
+#plt.plot(epochs, train_loss_values, 'bo', label='Training loss')
+#plt.plot(epochs, val_loss_values, 'r', label='Validation_loss') 
+#plt.legend() 
+#plt.xlabel('Epochs') 
+#plt.ylabel('Loss')
+#plt.savefig('VGGLoss.png')
+
+history_dict = history.history 
+train_acc_values = history_dict['acc']
+val_acc_values = history_dict['val_acc']
+
+epochs = range(1, len(train_acc_values) + 1) 
+plt.plot(epochs, train_acc_values, 'bo', label='Training acc')
+plt.plot(epochs, val_acc_values, 'r', label='Validation_acc') 
+plt.legend() 
+plt.xlabel('Epochs') 
+plt.ylabel('Accuracy')
+plt.savefig('VGGAcc.png')
+
+model.save("VGGTesting.h5")
+print('Model saved.')
